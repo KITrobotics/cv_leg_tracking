@@ -61,6 +61,7 @@
 #include <image_geometry/pinhole_camera_model.h>
 #include <depth_image_proc/depth_traits.h>
 
+#include <ros/package.h>
 
 typedef pcl::PointXYZRGB Point;
 typedef pcl::PointCloud<Point> PointCloud;
@@ -86,17 +87,20 @@ private:
   double person_neck;
   
   bool useCentroid;
-  
-  int background_threshold;
   double person_distance;
   
   bool shouldOutput;
   bool usePCL;
+  bool has_avg_image;
   
   std::string topic_point_cloud;
   std::string rgb_image_topic;
   std::string depth_image_topic;
   std::string depth_image_pub;
+  
+  std::string avg_image_path;
+  
+  int num_images_for_background;
   
   double bottom_factor;
   double camera_angle_radians;
@@ -144,7 +148,7 @@ private:
   std::string camera_info_topic;
   image_geometry::PinholeCameraModel model_;
   bool hasCameraInfo;
-  
+  std::string from_pc2_depth_image_topic;
   
   ros::Subscriber pc2_subscriber;
   
@@ -164,7 +168,7 @@ private:
   image_transport::Publisher rgb_image_pub_;
   image_transport::Publisher mog2_pub_;
   image_transport::Publisher erosion_image_pub_;
-  
+  image_transport::Publisher from_pc2_depth_image_pub_;
   
   
   

@@ -1,5 +1,3 @@
-
-
 #include <cv_leg_tracking/cv_leg_tracking.h>
 #include <fstream>
 #include <iostream>
@@ -7,8 +5,7 @@
 
 int C = 640, R = 480; // x = c, y = r
 int out = 1;
-int ToCalcAvg = 10;
-int bad_point = 9.9;
+const int bad_point = 9.9;
 
 
 
@@ -23,7 +20,8 @@ CvLegTracking::CvLegTracking(ros::NodeHandle nh) : nh_(nh), tfListener(tfBuffer)
     nh_.param("camera_frame_id", camera_frame_id, std::string("camera_depth_frame"));
     nh_.param("person_hips_frame_id", person_hips_frame_id, std::string("base_link"));
     nh_.param("camera_info_topic", camera_info_topic, std::string("camera_info"));
-    nh_.param("background_threshold", background_threshold, 3);
+    nh_.param("from_pc2_depth_image_topic", from_pc2_depth_image_topic, std::string("/cv_leg_tracking/from_pc2_depth_image_topic"));
+    nh_.param("num_images_for_background", num_images_for_background, 3);
     nh_.param("person_distance", person_distance, 1.);
     
     nh_.param("shouldOutput", shouldOutput, false);
@@ -32,7 +30,7 @@ CvLegTracking::CvLegTracking(ros::NodeHandle nh) : nh_(nh), tfListener(tfBuffer)
     
     nh_.param("lower_limit", lower_limit, 0.0);
     nh_.param("upper_limit", upper_limit, 1.0);
-
+    
     nh_.param("person_hips", person_hips, 0.15);
     nh_.param("person_neck", person_neck, 0.52);
     
@@ -41,49 +39,57 @@ CvLegTracking::CvLegTracking(ros::NodeHandle nh) : nh_(nh), tfListener(tfBuffer)
     
     nh_.param("camera_angle_radians", camera_angle_radians, 0.26);
     
-//     hips_plane_pub_ = nh_.advertise<visualization_msgs::Marker>("/cv_leg_tracking/hips_plane_pub_", 10);
-//     neck_plane_pub_ = nh_.advertise<visualization_msgs::Marker>("/cv_leg_tracking/neck_plane_pub_", 10);
+    std::string avg_image_path_param;
+    nh_.param("avg_image_path", avg_image_path_param, std::string("background_image/avg_image.png"));
+    std::string biotracking_path = ros::package::getPath("biotracking");
+    avg_image_path = biotracking_path + "/" + avg_image_path_param;
     
-//     if (usePCL)
-//     {
-//         
-//         pcl_cloud_publisher = nh_.advertise<PointCloud>("pcl_point_cloud", 10);
-//         pc2_subscriber = nh_.subscribe<sensor_msgs::PointCloud2>(topic_point_cloud, 1, 
-//                 &CvLegTracking::processPointCloud2, this);
-//     }
-//     else
-//     {
-//         calculated_point_cloud_publisher = nh_.advertise<PointCloud>("calculated_point_cloud", 10);
-        calculateAvgService = nh_.advertiseService("calculateAvg", &CvLegTracking::calculateAvgImage, this);
-        
-        depth_image_sub_ = it_.subscribe(depth_image_topic, 1, &CvLegTracking::imageCb, this);
-        rgb_image_sub_ = it_.subscribe(rgb_image_topic, 1, &CvLegTracking::rgbImageCb, this);
-//         image_pub_ = it_.advertise(depth_image_pub, 1);
-        subtract_image_pub_ = it_.advertise("/cv_leg_tracking/subtract_image", 1);
-        working_image_pub_ = it_.advertise("/cv_leg_tracking/working_image", 1);
-        avg_image_pub_ = it_.advertise("/cv_leg_tracking/avg_image", 1);
-        raw_image_8u_pub_ = it_.advertise("/cv_leg_tracking/raw_image_8u", 1);
-        rgb_image_pub_ = it_.advertise("/cv_leg_tracking/rgb_image_", 1);
-//         mog2_pub_ = it_.advertise("/cv_leg_tracking/mog2_image_", 1);
-        erosion_image_pub_ = it_.advertise("/cv_leg_tracking/erosion_image_", 1);
-        
-        
-        sub_camera_info_ = nh_.subscribe<sensor_msgs::CameraInfo>(camera_info_topic, 1, &CvLegTracking::cameraInfoCb, this);
-        hasCameraInfo = false;
-        
-        
-        remainedImagesToCalcAvg = ToCalcAvg;
-        
-        avg_image.create(R,C,CV_32FC1);
-        
-        isCalculateAvgSrvCalled = isAvgCalculated = false;
-        
-//         bottom_right_r = bottom_left_r = bottom_right_c = bottom_left_c = -1;
-//         left_r = left_c = right_r = right_c = -1;
-//         line_px = -1;
-//     }
+    //     hips_plane_pub_ = nh_.advertise<visualization_msgs::Marker>("/cv_leg_tracking/hips_plane_pub_", 10);
+    //     neck_plane_pub_ = nh_.advertise<visualization_msgs::Marker>("/cv_leg_tracking/neck_plane_pub_", 10);
+    
+    //     if (usePCL)
+    //     {
+    //         
+    //         pcl_cloud_publisher = nh_.advertise<PointCloud>("pcl_point_cloud", 10);
+    //         pc2_subscriber = nh_.subscribe<sensor_msgs::PointCloud2>(topic_point_cloud, 1, 
+    //                 &CvLegTracking::processPointCloud2, this);
+    //     }
+    //     else
+    //     {
+    //         calculated_point_cloud_publisher = nh_.advertise<PointCloud>("calculated_point_cloud", 10);
+    
+    pc2_subscriber = nh_.subscribe<sensor_msgs::PointCloud2>(topic_point_cloud, 1, 
+                                                             &CvLegTracking::processPointCloud2, this);
+    
+    calculateAvgService = nh_.advertiseService("calculateAvg", &CvLegTracking::calculateAvgImage, this);
+    
+    depth_image_sub_ = it_.subscribe(depth_image_topic, 1, &CvLegTracking::imageCb, this);
+    rgb_image_sub_ = it_.subscribe(rgb_image_topic, 1, &CvLegTracking::rgbImageCb, this);
+    //         image_pub_ = it_.advertise(depth_image_pub, 1);
+    subtract_image_pub_ = it_.advertise("/cv_leg_tracking/subtract_image", 1);
+    working_image_pub_ = it_.advertise("/cv_leg_tracking/working_image", 1);
+    avg_image_pub_ = it_.advertise("/cv_leg_tracking/avg_image", 1);
+    raw_image_8u_pub_ = it_.advertise("/cv_leg_tracking/raw_image_8u", 1);
+    rgb_image_pub_ = it_.advertise("/cv_leg_tracking/rgb_image_", 1);
+    //         mog2_pub_ = it_.advertise("/cv_leg_tracking/mog2_image_", 1);
+    erosion_image_pub_ = it_.advertise("/cv_leg_tracking/erosion_image_", 1);
+    from_pc2_depth_image_pub_ = it_.advertise(from_pc2_depth_image_topic, 1);
+    
+    sub_camera_info_ = nh_.subscribe<sensor_msgs::CameraInfo>(camera_info_topic, 1, &CvLegTracking::cameraInfoCb, this);
+    hasCameraInfo = has_avg_image = false;
+    
+    
+    remainedImagesToCalcAvg = num_images_for_background;
+    
+    avg_image.create(R,C,CV_32FC1);
+    
+    isCalculateAvgSrvCalled = isAvgCalculated = false;
+    
+    //         bottom_right_r = bottom_left_r = bottom_right_c = bottom_left_c = -1;
+    //         left_r = left_c = right_r = right_c = -1;
+    //         line_px = -1;
+    //     }
 }
-
 
 void CvLegTracking::cameraInfoCb(const sensor_msgs::CameraInfoConstPtr& info_msg)
 {
@@ -100,76 +106,156 @@ void CvLegTracking::cameraInfoCb(const sensor_msgs::CameraInfoConstPtr& info_msg
     }
 }
 
+void CvLegTracking::processPointCloud2(const sensor_msgs::PointCloud2::ConstPtr& msg)
+{
+    pcl::PCLPointCloud2::Ptr pcl_pc2 (new pcl::PCLPointCloud2());
+    pcl_conversions::toPCL(*msg, *pcl_pc2);
+    PointCloud cloudXYZRGB;
+    pcl::fromPCLPointCloud2(*pcl_pc2, cloudXYZRGB);
+    //     
+    //     PointCloud pass_through_filtered;
+    //     pcl::PassThrough<Point> pass;
+    //     pass.setInputCloud(cloudXYZRGB.makeShared());
+    //     pass.setFilterFieldName("z");
+    //     pass.setFilterLimits(lower_limit, upper_limit);
+    //     pass.setFilterLimitsNegative (false);
+    //     pass.filter(pass_through_filtered);
+    //     pcl_cloud_publisher.publish(pass_through_filtered);
+    //     
+    //     double x = upper_limit - lower_limit;
+    //     double y = 0.0;
+    //     
+    //     if (useCentroid) {
+    //         Eigen::Vector4f centroid;
+    //         pcl::compute3DCentroid(pass_through_filtered, centroid);
+    //         x = centroid(2);
+    //         y = -centroid(0);
+    //     }
+    //     
+    //     visualization_msgs::Marker marker = getRectangleMarker(x, y, person_hips);
+    //     hips_plane_pub_.publish(marker);
+    //     marker = getRectangleMarker(x, y, person_neck);
+    //     neck_plane_pub_.publish(marker);
+    
+    
+    if (hasCameraInfo) {
+        float focal_x = model_.fx();
+        float focal_y = model_.fy();
+        
+        cv::Mat cv_image = cv::Mat(R, C, CV_32FC1, cv::Scalar(bad_point));
+        
+        for (int i=0; i<cloudXYZRGB.points.size();i++){
+            if (cloudXYZRGB.points[i].z == cloudXYZRGB.points[i].z){
+                float z = cloudXYZRGB.points[i].z*1000.0;
+                float u = (cloudXYZRGB.points[i].x*1000.0*focal_x) / z;
+                float v = (cloudXYZRGB.points[i].y*1000.0*focal_y) / z;
+                int pixel_pos_x = (int)(u + center_x);
+                int pixel_pos_y = (int)(v + center_y);
+                
+                if (pixel_pos_x > (C-1)){
+                    pixel_pos_x = C-1;
+                }
+                if (pixel_pos_y > (R-1)){
+                    pixel_pos_y = R-1;
+                }
+                cv_image.at<float>(pixel_pos_y,pixel_pos_x) = z;
+            }       
+        }
+        
+        //         cv_image.convertTo(cv_image,CV_16UC1);
+        
+        sensor_msgs::ImagePtr output_image = cv_bridge::CvImage(std_msgs::Header(), "32FC1", cv_image).toImageMsg();
+        output_image->header = msg->header;
+        from_pc2_depth_image_pub_.publish(output_image);
+        //         output_image->header.stamp = info.header.stamp = t;
+        //         publish_result.publish(output_image);
+        //         publish_cam_info.publish(info);
+    }
+}
+
 
 void CvLegTracking::imageCb(const sensor_msgs::ImageConstPtr& msg)
 {
-//     if (!isCalculateAvgSrvCalled) { return; }
-
     cv_bridge::CvImagePtr cv_ptr;
     try
     {
-      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_32FC1);
+        cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_32FC1);
     }
     catch (cv_bridge::Exception& e)
     {
-      ROS_ERROR("cv_bridge exception: %s", e.what());
-      return;
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
     }
     
-    cv::imwrite("/tmp/background_image.png", cv_ptr->image);
-    	
-    if (remainedImagesToCalcAvg > 0) 
-    { 
-            avg_image = (1 / ToCalcAvg) * cv_ptr->image;
-    remainedImagesToCalcAvg--;
-    }
-    
-    if (remainedImagesToCalcAvg == 0)
-    { 
-            std::string file = "/home/student1/avg_image.jpg";
-    cv::imwrite(file, avg_image);
-            remainedImagesToCalcAvg--;
-    
-    for(int r = 0; r < avg_image.rows; r++) {
-        float* avg_image_raw_ptr = avg_image.ptr<float>(r);
-        float* cv_ptr_image_ptr = cv_ptr->image.ptr<float>(r);
-    
-        for(int c = 0; c < avg_image.cols; c++) {
-            // if NaN
-            if (avg_image_raw_ptr[c] != avg_image_raw_ptr[c]) { 
-                avg_image_raw_ptr[c] = bad_point;
+    if (!has_avg_image) {
+        cv::Mat read_image = cv::imread(avg_image_path, CV_32FC1);
+        if (!read_image.empty()) {
+            for(int r = 0; r < read_image.rows; r++) {
+                float* avg_image_raw_ptr = avg_image.ptr<float>(r);
+                float* read_image_ptr = read_image.ptr<float>(r);
+                
+                for(int c = 0; c < read_image.cols; c++) {
+                    avg_image_raw_ptr[c] = read_image_ptr[c];
+                }
             }
-            if (cv_ptr_image_ptr[c] != cv_ptr_image_ptr[c]) {
-                cv_ptr_image_ptr[c] = bad_point;
+            has_avg_image = true;
+        } else {
+            if (!isCalculateAvgSrvCalled) { return; }
+            
+            if (remainedImagesToCalcAvg > 0) 
+            { 
+                avg_image += (1 / num_images_for_background) * cv_ptr->image;
+                remainedImagesToCalcAvg--;
+                return;
+            }
+            
+            if (remainedImagesToCalcAvg == 0)
+            { 
+                remainedImagesToCalcAvg--;
+                
+                for(int r = 0; r < avg_image.rows; r++) {
+                    float* avg_image_raw_ptr = avg_image.ptr<float>(r);
+                    float* cv_ptr_image_ptr = cv_ptr->image.ptr<float>(r);
+                    
+                    for(int c = 0; c < avg_image.cols; c++) {
+                        // if NaN
+                        if (avg_image_raw_ptr[c] != avg_image_raw_ptr[c]) { 
+                            avg_image_raw_ptr[c] = bad_point;
+                        }
+                        if (cv_ptr_image_ptr[c] != cv_ptr_image_ptr[c]) {
+                            cv_ptr_image_ptr[c] = bad_point;
+                        }
+                    }
+                }
+                
+                cv::imwrite(avg_image_path, avg_image);
+                has_avg_image = true;
+                ROS_INFO("Average image is calculated!");
             }
         }
     }
     
+    if (!has_avg_image) { return; }
     
-    ROS_INFO("Average image is calculated!");
-    }
-
-    if (remainedImagesToCalcAvg > 0) { return; }
-	
     cv::Mat avg_image_8u;
-//     avg_image.convertTo(avg_image_8u, CV_8UC1, 255, 0);
+    //     avg_image.convertTo(avg_image_8u, CV_8UC1, 255, 0);
     avg_image.convertTo(avg_image_8u, CV_8UC1);
     
     cv::Mat raw_image_8u;
     cv_ptr->image.convertTo(raw_image_8u, CV_8UC1, 255, 0);
-	
-	/*
+    
+    /*
      * workingImg
      */
-// 	cv::Mat workingImg = cv_ptr->image - avg_image;
+    // 	cv::Mat workingImg = cv_ptr->image - avg_image;
     cv::Mat diffMat;
     cv::absdiff(avg_image,cv_ptr->image,diffMat);
-
+    
     cv::Mat workingImg;
     workingImg.create(R,C,CV_8UC1);
     std::string s = "", s2 = "";
     for(int r = 0; r < workingImg.rows; r++) {
-//         uchar* raw_image_ptr = raw_image_8u.ptr<uchar>(r);
+        //         uchar* raw_image_ptr = raw_image_8u.ptr<uchar>(r);
         uchar* avg_image_ptr = avg_image_8u.ptr<uchar>(r);
         uchar* workingImg_ptr = workingImg.ptr<uchar>(r);
         float* cv_ptr_image_ptr = cv_ptr->image.ptr<float>(r);
@@ -177,15 +263,6 @@ void CvLegTracking::imageCb(const sensor_msgs::ImageConstPtr& msg)
         float* diffMat_ptr = diffMat.ptr<float>(r);
         
         for(int c = 0; c < workingImg.cols; c++) {
-//             if (std::abs(raw_image_ptr[c] - avg_image_ptr[c]) > background_threshold) {
-//                 workingImg_ptr[c] = 255;
-//             }
-//             else {
-//                 workingImg_ptr[c] = 0;
-//             }
-//             workingImg_ptr[c] = 255 * std::abs(avg_image_raw_ptr[c] - cv_ptr_image_ptr[c]);
-            
-//             float diff = avg_image_raw_ptr[c] - cv_ptr_image_ptr[c];
             
             if (diffMat_ptr[c] > 0.1 && cv_ptr_image_ptr[c] < person_distance && cv_ptr_image_ptr[c] > 0.06)
             {
@@ -193,10 +270,10 @@ void CvLegTracking::imageCb(const sensor_msgs::ImageConstPtr& msg)
             } else {
                 workingImg_ptr[c] = 0;
             }
-                
+            
             if (out == 1) {
                 s += "[actual: " + std::to_string(cv_ptr_image_ptr[c]) + ", absdiff: " + std::to_string(diffMat_ptr[c]) + ", avg: " + std::to_string(avg_image_raw_ptr[c]) + ", pos: (" + std::to_string(r) + ", " + std::to_string(c) + ")]";
-//                 s2 += "[" + std::to_string(raw_image_ptr[c]) + ", " + std::to_string(avg_image_ptr[c]) + "(" + std::to_string(r) + ", " + std::to_string(c) + ")]";
+                //                 s2 += "[" + std::to_string(raw_image_ptr[c]) + ", " + std::to_string(avg_image_ptr[c]) + "(" + std::to_string(r) + ", " + std::to_string(c) + ")]";
                 
             }
         }
@@ -220,12 +297,12 @@ void CvLegTracking::imageCb(const sensor_msgs::ImageConstPtr& msg)
     cv::Mat erosion_dst;
     int erosion_size = 1;
     cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT,
-        cv::Size(2 * erosion_size + 1, 2 * erosion_size + 1),
-        cv::Point(erosion_size, erosion_size) );
-
+                                                cv::Size(2 * erosion_size + 1, 2 * erosion_size + 1),
+                                                cv::Point(erosion_size, erosion_size) );
+    
     erode(workingImg, erosion_dst, element);
     cv::Mat subtract_dst = workingImg - erosion_dst;
-
+    
     int bottom_r = subtract_dst.rows - 10;
     bottom_right_r = bottom_left_r = bottom_r; 
     uchar* bottom_ptr = subtract_dst.ptr<uchar>(bottom_r);
@@ -248,24 +325,24 @@ void CvLegTracking::imageCb(const sensor_msgs::ImageConstPtr& msg)
     }
     
     
-	
+    
     for(int r = 5; r < subtract_dst.cols / 2; r++) {
         uchar* ptr = subtract_dst.ptr<uchar>(r);
         int left, right;
         left = right = -1;
         for(int c = 0; c < subtract_dst.rows; c++) {
             if (ptr[c] > 0) {
-                    left = c;
-                    break;
+                left = c;
+                break;
             }
         }
         for (int c = subtract_dst.rows - 1; c >= 0; c--) {
-                if (ptr[c] > 0) {
-                        right = c;
-                        break;
-                }
+            if (ptr[c] > 0) {
+                right = c;
+                break;
+            }
         }
-		
+        
         if (left == -1 || right == -1) { continue; }
         
         if (right - left > bottom_factor * (bottom_right_c - bottom_left_c)) {
@@ -310,77 +387,77 @@ void CvLegTracking::imageCb(const sensor_msgs::ImageConstPtr& msg)
     /**
      * Retrieving camera point of person hips height
      */
-//     geometry_msgs::TransformStamped transformStamped;
-//     geometry_msgs::PointStamped person_hips_height_world_point, person_hips_height_camera_point;
-//     person_hips_height_world_point.header.frame_id = camera_frame_id;
-//     person_hips_height_world_point.header.stamp = ros::Time::now();
-// 
-//     bool is_transformed = false;
-//     try{
-//         transformStamped = tfBuffer.lookupTransform(camera_frame_id, person_hips_frame_id, ros::Time(0));
-//         is_transformed = true;
-//     }
-//     catch (tf2::TransformException &ex) {
-//         ROS_WARN("Failure to lookup the transform for a point! %s\n", ex.what());
-//     }
-// 
-//     if (is_transformed) 
-//     {
-//         person_hips_height_world_point.point.x = 0.;
-//         person_hips_height_world_point.point.y = 0.;
-//         person_hips_height_world_point.point.z = person_hips;
-// 
-//         tf2::doTransform(person_hips_height_world_point, person_hips_height_camera_point, transformStamped);
-//     }
+    //     geometry_msgs::TransformStamped transformStamped;
+    //     geometry_msgs::PointStamped person_hips_height_world_point, person_hips_height_camera_point;
+    //     person_hips_height_world_point.header.frame_id = camera_frame_id;
+    //     person_hips_height_world_point.header.stamp = ros::Time::now();
+    // 
+    //     bool is_transformed = false;
+    //     try{
+    //         transformStamped = tfBuffer.lookupTransform(camera_frame_id, person_hips_frame_id, ros::Time(0));
+    //         is_transformed = true;
+    //     }
+    //     catch (tf2::TransformException &ex) {
+    //         ROS_WARN("Failure to lookup the transform for a point! %s\n", ex.what());
+    //     }
+    // 
+    //     if (is_transformed) 
+    //     {
+    //         person_hips_height_world_point.point.x = 0.;
+    //         person_hips_height_world_point.point.y = 0.;
+    //         person_hips_height_world_point.point.z = person_hips;
+    // 
+    //         tf2::doTransform(person_hips_height_world_point, person_hips_height_camera_point, transformStamped);
+    //     }
     /**
      * Retrieving camera point of person hips height
      */
     
-//     int horizontal_plane_y_int = showHorizontalPlane(cv_ptr->image, subtract_dst);
+    //     int horizontal_plane_y_int = showHorizontalPlane(cv_ptr->image, subtract_dst);
     
-//     if (horizontal_plane_y_int != -1) 
-//     {
-//         hips_height = calculateHipsHeight(cv_ptr->image, horizontal_plane_y_int, subtract_dst);
-//         calculateHipsLeftRightX(subtract_dst);
-//     }
-    
-    
-//     showFirstFromLeftPoints(cv_ptr->image, subtract_dst, msg->header.frame_id);
+    //     if (horizontal_plane_y_int != -1) 
+    //     {
+    //         hips_height = calculateHipsHeight(cv_ptr->image, horizontal_plane_y_int, subtract_dst);
+    //         calculateHipsLeftRightX(subtract_dst);
+    //     }
     
     
-    
-//     if (line_px != -1) {
-//         cv::line(subtract_dst, cv::Point(line_px, line_py), cv::Point(line_qx, line_qy), cv::Scalar(255,255,255));
-//     }
-    
-//     double x = upper_limit - lower_limit;
-//     double y = 0.0;
-//     visualization_msgs::Marker marker = getRectangleMarker(x, y, person_hips);
-//     hips_plane_pub_.publish(marker);
-//     marker = getRectangleMarker(x, y, person_neck);
-//     neck_plane_pub_.publish(marker);
+    //     showFirstFromLeftPoints(cv_ptr->image, subtract_dst, msg->header.frame_id);
     
     
-//     image_pub_.publish(cv_ptr->toImageMsg());
+    
+    //     if (line_px != -1) {
+    //         cv::line(subtract_dst, cv::Point(line_px, line_py), cv::Point(line_qx, line_qy), cv::Scalar(255,255,255));
+    //     }
+    
+    //     double x = upper_limit - lower_limit;
+    //     double y = 0.0;
+    //     visualization_msgs::Marker marker = getRectangleMarker(x, y, person_hips);
+    //     hips_plane_pub_.publish(marker);
+    //     marker = getRectangleMarker(x, y, person_neck);
+    //     neck_plane_pub_.publish(marker);
+    
+    
+    //     image_pub_.publish(cv_ptr->toImageMsg());
     sensor_msgs::ImagePtr msg_to_pub;
     
     msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", raw_image_8u).toImageMsg();
-	raw_image_8u_pub_.publish(msg_to_pub);
-//     msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", avg_image_8u).toImageMsg();
+    raw_image_8u_pub_.publish(msg_to_pub);
+    //     msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", avg_image_8u).toImageMsg();
     msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "32FC1", avg_image).toImageMsg();
-	avg_image_pub_.publish(msg_to_pub);
-	msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", workingImg).toImageMsg();
-	working_image_pub_.publish(msg_to_pub);
-	msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", subtract_dst).toImageMsg();
-	subtract_image_pub_.publish(msg_to_pub);
-	msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", erosion_dst).toImageMsg();
-	erosion_image_pub_.publish(msg_to_pub);
-// 	msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "32FC1", fgMaskMOG2).toImageMsg();
-// 	mog2_pub_.publish(msg_to_pub);
+    avg_image_pub_.publish(msg_to_pub);
+    msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", workingImg).toImageMsg();
+    working_image_pub_.publish(msg_to_pub);
+    msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", subtract_dst).toImageMsg();
+    subtract_image_pub_.publish(msg_to_pub);
+    msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "8UC1", erosion_dst).toImageMsg();
+    erosion_image_pub_.publish(msg_to_pub);
+    // 	msg_to_pub = cv_bridge::CvImage(std_msgs::Header(), "32FC1", fgMaskMOG2).toImageMsg();
+    // 	mog2_pub_.publish(msg_to_pub);
     
     
-//     int waitInt;
-//     std::cin >> waitInt;
+    //     int waitInt;
+    //     std::cin >> waitInt;
 }
 
 // void CvLegTracking::calculateHipsLeftRightX(cv::Mat& black_white_image)
@@ -575,38 +652,6 @@ bool CvLegTracking::calculateAvgImage(std_srvs::Empty::Request& request, std_srv
 
 
 
-// void CvLegTracking::processPointCloud2(const sensor_msgs::PointCloud2::ConstPtr& cloud_in)
-// {
-//     pcl::PCLPointCloud2::Ptr pcl_pc2 (new pcl::PCLPointCloud2());
-//     pcl_conversions::toPCL(*cloud_in, *pcl_pc2);
-//     PointCloud cloudXYZRGB;
-//     pcl::fromPCLPointCloud2(*pcl_pc2, cloudXYZRGB);
-//     
-//     PointCloud pass_through_filtered;
-//     pcl::PassThrough<Point> pass;
-//     pass.setInputCloud(cloudXYZRGB.makeShared());
-//     pass.setFilterFieldName("z");
-//     pass.setFilterLimits(lower_limit, upper_limit);
-//     pass.setFilterLimitsNegative (false);
-//     pass.filter(pass_through_filtered);
-//     pcl_cloud_publisher.publish(pass_through_filtered);
-//     
-//     double x = upper_limit - lower_limit;
-//     double y = 0.0;
-//     
-//     if (useCentroid) {
-//         Eigen::Vector4f centroid;
-//         pcl::compute3DCentroid(pass_through_filtered, centroid);
-//         x = centroid(2);
-//         y = -centroid(0);
-//     }
-// 
-//     visualization_msgs::Marker marker = getRectangleMarker(x, y, person_hips);
-//     hips_plane_pub_.publish(marker);
-//     marker = getRectangleMarker(x, y, person_neck);
-//     neck_plane_pub_.publish(marker);
-// }
-
 // void CvLegTracking::drawHipsCirles(cv::Mat& image)
 // {
 //     if (hips_height < 0 || hips_height >= image.rows || hips_left_x == -1 || hips_right_x == -1)
@@ -626,34 +671,34 @@ void CvLegTracking::rgbImageCb(const sensor_msgs::ImageConstPtr& msg)
     cv_bridge::CvImagePtr cv_ptr;
     try
     {
-      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+        cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
     }
     catch (cv_bridge::Exception& e)
     {
-      ROS_ERROR("cv_bridge exception: %s", e.what());
-      return;
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
     }
     
-//     if (hips_height != -1)
-//     {
-//         drawHipsCirles(cv_ptr->image);
-//     }
-//     
-//     if (line_px != -1) {
-//         cv::line(cv_ptr->image, cv::Point(line_px, line_py), cv::Point(line_qx, line_qy), cv::Scalar(0,0,255));
-//     }
+    //     if (hips_height != -1)
+    //     {
+    //         drawHipsCirles(cv_ptr->image);
+    //     }
+    //     
+    //     if (line_px != -1) {
+    //         cv::line(cv_ptr->image, cv::Point(line_px, line_py), cv::Point(line_qx, line_qy), cv::Scalar(0,0,255));
+    //     }
     
-//     if (left_c != -1 && left_r != -1) 
-//         cv::circle(cv_ptr->image, cv::Point(left_c, left_r), 10, CV_RGB(255,0,0), CV_FILLED, 10,0);
-//     
-//     if (right_c != -1 && right_r != -1) 
-//         cv::circle(cv_ptr->image, cv::Point(right_c, right_r), 10, CV_RGB(255,0,0), CV_FILLED, 10,0);
-//     
-//     if (bottom_left_c != -1 && bottom_left_r != -1) 
-//         cv::circle(cv_ptr->image, cv::Point(bottom_left_c, bottom_left_r), 10, CV_RGB(0,255,0), CV_FILLED, 10,0);
-//     
-//     if (bottom_right_c != -1 && bottom_right_r != -1) 
-//         cv::circle(cv_ptr->image, cv::Point(bottom_right_c, bottom_right_r), 10, CV_RGB(0,255,0), CV_FILLED, 10,0);
+    //     if (left_c != -1 && left_r != -1) 
+    //         cv::circle(cv_ptr->image, cv::Point(left_c, left_r), 10, CV_RGB(255,0,0), CV_FILLED, 10,0);
+    //     
+    //     if (right_c != -1 && right_r != -1) 
+    //         cv::circle(cv_ptr->image, cv::Point(right_c, right_r), 10, CV_RGB(255,0,0), CV_FILLED, 10,0);
+    //     
+    //     if (bottom_left_c != -1 && bottom_left_r != -1) 
+    //         cv::circle(cv_ptr->image, cv::Point(bottom_left_c, bottom_left_r), 10, CV_RGB(0,255,0), CV_FILLED, 10,0);
+    //     
+    //     if (bottom_right_c != -1 && bottom_right_r != -1) 
+    //         cv::circle(cv_ptr->image, cv::Point(bottom_right_c, bottom_right_r), 10, CV_RGB(0,255,0), CV_FILLED, 10,0);
     
     rgb_image_pub_.publish(cv_ptr->toImageMsg());
 }
