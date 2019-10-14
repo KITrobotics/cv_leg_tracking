@@ -1,11 +1,7 @@
 <?xml version="1.0"?>
 <launch>
-  <node pkg="pcl_ros" type="convert_pointcloud_to_image" name="cloud_to_image" 
-        args="input:=/camera_legs/depth_registered/points output:=/camera_legs/depth_registered/cloud_image" output="screen">
-  </node>
-
-  <node pkg="cv_leg_tracking" type="cv_leg_tracking" name="cv_leg_tracking" output="screen">
+  <node pkg="cv_leg_tracking" type="cv_leg_tracking" name="cv_leg_tracking" output="screen" >
     <rosparam command="load" file="$(find cv_leg_tracking)/config/parameters.yaml"/>
   </node>
-
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find cv_leg_tracking)/config/setup.rviz"/>
 </launch>

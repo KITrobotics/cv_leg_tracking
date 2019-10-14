@@ -1,24 +1,24 @@
-lower_limit: 0.0
-upper_limit: 1.0
-
-depth_image_topic: /camera_legs/depth_registered/cloud_image
-rgb_image_topic: /camera_legs/rgb/image_rect_color
-#depth_image_pub: /cv_leg_tracking/raw_image
-topic_point_cloud: /camera_legs/depth_registered/points
-from_pc2_depth_image_topic: /cv_leg_tracking/from_pc2_depth_image_topic
+image_cols: 640
+image_rows: 480
+bad_point: 9.9
+cv_fs_image_id: "avg_image"
 num_images_for_background: 1
 person_distance: 1.5
-bottom_factor: 1.
-shouldOutput: false
-camera_frame_id: camera_depth_frame
-usePCL: false
-#person_hips: -0.1
-#person_neck: 0.4
-person_hips: 0.2
-hips_height_world: 0.8
-camera_height_world: 0.6
-person_hips_frame_id: base_link
-person_neck: 0.4
-useCentroid: true
+min_distance_near_camera: 0.4
 camera_info_topic: /camera_body/depth_registered/camera_info
-camera_angle_radians: -0.26
+from_pc2_depth_image_topic: /cv_leg_tracking/from_pc2_depth_image
+
+# default parameters
+depth_image_sub_topic: /cv_leg_tracking/from_pc2_depth_image
+topic_point_cloud: /camera_legs/depth_registered/points
+avg_image_path: background_image/avg_image_legs_camera_cloud.yml
+
+# for comparing purposes, case 1 with body pointcloud
+#depth_image_sub_topic: /cv_leg_tracking/from_pc2_depth_image
+#topic_point_cloud: /camera_body/depth_registered/points
+#avg_image_path: background_image/avg_image_body_camera_cloud.yml
+
+# for comparing purposes, case 2 with body depth image
+#depth_image_sub_topic: /camera_body/depth_registered/image_raw
+#topic_point_cloud: /camera_body/depth_registered/points
+#avg_image_path: background_image/avg_image_body_camera_depth.yml
