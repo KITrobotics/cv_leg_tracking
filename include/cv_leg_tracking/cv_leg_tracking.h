@@ -80,8 +80,6 @@ private:
   int num_images_for_background;
   int R;
   int C;
-  int left_r, left_c, right_r, right_c;
-  int bottom_right_r, bottom_left_r, bottom_right_c, bottom_left_c;
   
   float center_x;
   float center_y;
