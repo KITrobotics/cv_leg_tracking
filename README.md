@@ -1,5 +1,5 @@
 # cv_leg_tracking
-Leg tracking with opencv
+Base package for leg tracking with opencv.
 
 Just run: 
 ```
