@@ -196,7 +196,6 @@ void CvLegTracking::imageCb(const sensor_msgs::ImageConstPtr& msg)
     
     cv::Mat workingImg;
     workingImg = cv::Mat::zeros(R,C,CV_8UC1);
-    std::string s = "", s2 = "";
     for(int r = 0; r < workingImg.rows; r++) {
         uchar* workingImg_ptr = workingImg.ptr<uchar>(r);
         float* cv_ptr_image_ptr = cv_ptr->image.ptr<float>(r);
